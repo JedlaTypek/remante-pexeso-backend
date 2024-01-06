@@ -163,25 +163,8 @@ io.on("connection", (socket) => {
         foundLobby.gameDesk[card2].id = 0;
         // skrytí karet na frontendu
         for (const playerId of foundLobby.players) {
-          foundLobby.playerPoints=foundLobby.players.map((x) => 0);
-          const players = [];
-          for (let i=0;i<foundLobby.players.length;i++) {
-            const playerId = foundLobby.players[i];
-            players.push({
-              id: playerId,
-              name: socketNames[playerId],
-              points: foundLobby.playerPoints[i]
-            });
-          
-            io.to(playerId).emit("hideCards", card1, card2, {
-              gameDesk: foundLobby.gameDesk.length,
-              players,
-              collumns: foundLobby.collumns,
-              playerOnMove: players[0].id
-            });
+            io.to(playerId).emit("hideCards", card1, card2);
           }
-          lobby.playerOnMove = players[0].id;
-        }
       } else{ // nastaví dalšího hráče na řadě
         foundLobby.playerOnMove = foundLobby.players[(foundLobby.players.indexOf(foundLobby.playerOnMove) + 1) % foundLobby.players.length];
       }
