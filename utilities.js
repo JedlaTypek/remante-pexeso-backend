@@ -21,4 +21,25 @@ function picsum(karty){
     return karty;
 }
 
-module.exports = {createGameDesk, picsum};
+function playersCreate(lobby, socketNames){ // lobby je databáze, ze které to tahá
+    const players = [];
+      for (let i = 0; i < lobby.players.length; i++) { //do pole players uloží každého hráče jako objekt, který uchovává socketID (playerID), jeho ingame jméno a jeho body
+        const playerId = lobby.players[i];
+        players.push({
+          id: playerId,
+          name: socketNames[playerId],
+          points: lobby.playerPoints[i]
+      });
+    }
+    return players;
+}
+
+function endStats(lobby, socketNames){
+    players = playersCreate(lobby, socketNames);
+    players.sort((a, b) => b.points - a.points); //seřadí podle bodů
+    const winners = players.filter((hrac) => hrac.points === players[0].points);
+    console.log(winners, players);
+    return winners
+}
+
+module.exports = {createGameDesk, picsum, playersCreate, endStats};

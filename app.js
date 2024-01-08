@@ -1,4 +1,5 @@
 // npm run dev - zapnutí serveru
+// screen -r backendConsole
 
 const express = require("express");
 const { createServer } = require("node:http");
@@ -9,12 +10,15 @@ const app = express();
 app.use(express.json());
 const port = 3006;
 const Lobby = require("./schemas/lobby.schema");
-const { createGameDesk, picsum } = require("./utilities");
+const Stats = require("./schemas/stats.schema");
+const { createGameDesk, picsum, playersCreate, endStats } = require("./utilities");
 app.use(cors({ origin: ["http://138.2.144.241"] }));
 const server = createServer(app);
 const io = new Server(server, {
   cors: { origin: "http://138.2.144.241" },
 });
+
+let socketNames = [];
 
 main().catch((err) => console.log(err));
 
@@ -35,15 +39,7 @@ app.post("/gameStart", async (req, res) => {
       return;
     }
     lobby.playerPoints=lobby.players.map((x) => 0);
-    const players = [];
-    for (let i=0;i<lobby.players.length;i++) { //do pole players uloží každého hráče jako objekt, který uchovává socketID (playerID), jeho ingame jméno a jeho body
-      const playerId = lobby.players[i];
-      players.push({
-        id: playerId,
-        name: socketNames[playerId],
-        points: lobby.playerPoints[i]
-      });
-    }
+    const players = playersCreate(lobby, socketNames);
     for (const playerId of lobby.players) {
       io.to(playerId).emit("hraZacala", {
         gameDesk: lobby.gameDesk.length,
@@ -83,6 +79,11 @@ app.post("/lobby", async (req, res) => {
 app.post("/lobbyJoin", async (req, res) => {
   const lobbyCode = req.body.lobbyCode;
   const foundLobby = await Lobby.findOne({ lobbyCode }).exec();
+  const playerAlreadyInLobby = await Lobby.findOne({players: req.body.socketId}).exec();
+  if (playerAlreadyInLobby != null){
+    res.send();
+    return;
+  }
   if (foundLobby == null) {
     res.status(404).send();
     return;
@@ -102,8 +103,6 @@ app.post("/lobbyJoin", async (req, res) => {
   }
   res.send({ ...foundLobby.toObject(), playerNames });
 });
-
-let socketNames = {};
 
 io.on("connection", (socket) => {
   console.log("a user connected", socket.id);
@@ -151,44 +150,34 @@ io.on("connection", (socket) => {
     if(turnedCards.length === 2){
       if(turnedCards[0].id == turnedCards[1].id){
         foundLobby.playerPoints[foundLobby.players.indexOf(foundLobby.playerOnMove)]++; // přičítaní bodů
-        const players = [];
-        for (let i = 0; i < foundLobby.players.length; i++) { //do pole players uloží každého hráče jako objekt, který uchovává socketID (playerID), jeho ingame jméno a jeho body
-          const playerId = foundLobby.players[i];
-          players.push({
-            id: playerId,
-            name: socketNames[playerId],
-            points: foundLobby.playerPoints[i]
-          });
-        }
+        const players = playersCreate(foundLobby, socketNames);
         for (const playerId of foundLobby.players) { //přičítaní bodů na frontendu
             io.to(playerId).emit("playerListChange", players, foundLobby.playerOnMove);
         }
         const cardUrl = foundLobby.gameDesk[card].url;
         const cardsToHide = foundLobby.gameDesk.filter((element) => element.url === cardUrl); //vytvoří pole karet, které se mají skrýt
-        console.log(cardsToHide);
         // nalezení indexu karet, které se mají skrýt, v poli všech karet
         const card1 = foundLobby.gameDesk.indexOf(cardsToHide[0]);
         const card2 = foundLobby.gameDesk.indexOf(cardsToHide[1]);
-        console.log(card1, card2);
         // nastavení id na nulu, protože karta už na hracím poli neexistuje
         foundLobby.gameDesk[card1].id = 0;
         foundLobby.gameDesk[card2].id = 0;
         // skrytí karet na frontendu
         for (const playerId of foundLobby.players) {
             io.to(playerId).emit("hideCards", card1, card2);
+        }
+        // zjistí, jestli hra už nemá skončit, když ano, pošle to na frontend
+        if(foundLobby.gameDesk.filter((element) => element.id === 0).length === foundLobby.gameDesk.length){
+          const winners = endStats(foundLobby, socketNames);
+          for (const playerId of foundLobby.players) { // na frontendu
+            io.to(playerId).emit("end", players, winners);    
           }
+        }
+
       } else{ // nastaví dalšího hráče na řadě
         foundLobby.playerOnMove = foundLobby.players[(foundLobby.players.indexOf(foundLobby.playerOnMove) + 1) % foundLobby.players.length]; // v backendu
-        const players = [];
-        for (let i = 0; i < foundLobby.players.length; i++) { //do pole players uloží každého hráče jako objekt, který uchovává socketID (playerID), jeho ingame jméno a jeho body
-          const playerId = foundLobby.players[i];
-          players.push({
-            id: playerId,
-            name: socketNames[playerId],
-            points: foundLobby.playerPoints[i]
-          });
-        }
-        for (const playerId of foundLobby.players) { //přičítaní bodů na frontendu
+        const players = playersCreate(foundLobby, socketNames);
+        for (const playerId of foundLobby.players) { // na frontendu
             io.to(playerId).emit("playerListChange", players, foundLobby.playerOnMove);
         }
       }
