@@ -12,10 +12,10 @@ const port = 3006;
 const Lobby = require("./schemas/lobby.schema");
 const Stats = require("./schemas/stats.schema");
 const { createGameDesk, picsum, playersCreate, endStats } = require("./utilities");
-app.use(cors({ origin: ["http://138.2.144.241"] }));
+app.use(cors({ origin: ["http://pexeso.lol"] }));
 const server = createServer(app);
 const io = new Server(server, {
-  cors: { origin: "http://138.2.144.241" },
+  cors: { origin: "http://pexeso.lol" },
 });
 
 let socketNames = [];
