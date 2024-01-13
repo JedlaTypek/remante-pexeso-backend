@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const lobbySchema = new mongoose.Schema({
-lobbyCode: String,
+  lobbyCode: String,
   players: [String],
   gameDesk: [{id: Number, url: String}],
   maxPlayers: Number,

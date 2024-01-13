@@ -27,6 +27,12 @@ async function main() {
     "mongodb://myUserAdmin:RemantE*it2_2023@localhost:27017/pexeso?authMechanism=DEFAULT",
     { authSource: "admin" }
   );
+  await Stats.findOneAndUpdate(
+    {},
+    { $setOnInsert: { name: 'stats', stats: [] } },
+    { upsert: true, new: true }
+  );
+
 }
 
 app.get("/", (req, res) => {
@@ -38,6 +44,13 @@ app.post("/gameStart", async (req, res) => {
     if (lobby == null) {
       return;
     }
+    if (lobby.players.length < 2){
+      for (const playerId of lobby.players) {
+        io.to(playerId).emit("notEnoughPlayers");
+      }
+      return;
+    }
+    if(lobby.playerPoints.length > 0) return;
     lobby.playerPoints=lobby.players.map((x) => 0);
     const players = playersCreate(lobby, socketNames);
     for (const playerId of lobby.players) {
@@ -63,7 +76,8 @@ app.post("/lobby", async (req, res) => {
   console.log(code);
   const width = req.body.width;
   const heigh = req.body.height;
-  const gameDesk = picsum(createGameDesk(width, heigh));
+  const sada = req.body.sada;
+  const gameDesk = createGameDesk(width, heigh, sada);
   const createdLobby = await Lobby.create({
     lobbyCode: code,
     maxPlayers: req.body.maxPlayers || 2,
@@ -92,6 +106,10 @@ app.post("/lobbyJoin", async (req, res) => {
     res.status(403).send();
     return;
   }
+  if(foundLobby.playerPoints.length > 0){
+    res.status(402).send();
+    return;
+  }
   for (const playerId of foundLobby.players) {
     io.to(playerId).emit("idHrace", socketNames[req.body.socketId]);
   }
@@ -104,32 +122,59 @@ app.post("/lobbyJoin", async (req, res) => {
   res.send({ ...foundLobby.toObject(), playerNames });
 });
 
+app.post("/stats", async (req, res) => {
+  const statsDoc = await Stats.findOne({});
+  const wins = (statsDoc.stats.toSorted((a, b) => b.wins - a.wins).filter((a) => a.wins != 0)).slice(0, 10);
+  const gamesPlayed = (statsDoc.stats.toSorted((a, b) => b.gamesPlayed - a.gamesPlayed).filter((a) => a.gamesPlayed != 0)).slice(0, 10);
+  const pointsEarned = (statsDoc.stats.toSorted((a, b) => b.pointsEarned - a.pointsEarned).filter((a) => a.pointsEarned != 0)).slice(0, 10);
+  res.send({wins, gamesPlayed, pointsEarned});
+});
+
 io.on("connection", (socket) => {
   console.log("a user connected", socket.id);
-  socket.on("jmenoHrace", (jmeno) => {
+  socket.on("jmenoHrace", async (jmeno) => {
     socketNames[socket.id] = jmeno;
+    const statsDoc = await Stats.findOne({});
+    if(statsDoc.stats.find((stat) => stat.name === socketNames[socket.id]) === undefined){
+      statsDoc.stats.push({
+        name: socketNames[socket.id],
+        wins: 0,
+        gamesPlayed: 0,
+        pointsEarned: 0
+      })
+    }
+    statsDoc.save();
   });
   socket.on("disconnect", async () => {
     const lobby = await Lobby.findOne({ players: socket.id });
     if (lobby == null) {
       return;
     }
-    
+    if(socket.id === lobby.playerOnMove){
+      lobby.playerOnMove = lobby.players[(lobby.players.indexOf(lobby.playerOnMove) + 1) % lobby.players.length];
+    }
+    lobby.playerPoints = lobby.playerPoints.splice(lobby.players.indexOf(socket.id), 1);
     lobby.players = lobby.players.filter((socketId) => socket.id != socketId);
-    console.log(lobby.players);
     await lobby.save();
     const playerNames = [];
     for (const playerId of lobby.players) {
       playerNames.push(socketNames[playerId]);
     }
-    for (const playerId of lobby.players) {
-      io.to(playerId).emit("updateHrace", playerNames);
+    const players = playersCreate(lobby, socketNames);
+    for (const playerId of lobby.players) { // na frontendu
+            io.to(playerId).emit("playerListChange", players, lobby.playerOnMove);
     }
     console.log("user disconnected", socket.id);
+    //smazání lobby, když je prázdné
+    if(lobby.players.length === 0){
+      await lobby.deleteOne();
+    }
   });
 
   socket.on("turn", async (card) =>{
     const foundLobby = await Lobby.findOne({players: socket.id}).exec();
+    const statsDoc = await Stats.findOne({});
+
     if (foundLobby == null || socket.id != foundLobby.playerOnMove || foundLobby.gameDesk[card].id <= 0 || foundLobby.gameDesk.filter((card) => card < 0).length > 2) return;
     foundLobby.gameDesk[card].id *= -1; // nastaví v databázi negativní id, což značí, že je karta otočená
     
@@ -153,7 +198,9 @@ io.on("connection", (socket) => {
         const players = playersCreate(foundLobby, socketNames);
         for (const playerId of foundLobby.players) { //přičítaní bodů na frontendu
             io.to(playerId).emit("playerListChange", players, foundLobby.playerOnMove);
-        }
+        }    
+        // přičítání bodů ve stats databázi
+        statsDoc.stats[statsDoc.stats.findIndex((stat) => stat.name === socketNames[foundLobby.playerOnMove])].pointsEarned++;
         const cardUrl = foundLobby.gameDesk[card].url;
         const cardsToHide = foundLobby.gameDesk.filter((element) => element.url === cardUrl); //vytvoří pole karet, které se mají skrýt
         // nalezení indexu karet, které se mají skrýt, v poli všech karet
@@ -172,6 +219,12 @@ io.on("connection", (socket) => {
           for (const playerId of foundLobby.players) { // na frontendu
             io.to(playerId).emit("end", players, winners);    
           }
+          for(const player of foundLobby.players){ // připočtení dohrané hry do statistik
+            statsDoc.stats[statsDoc.stats.findIndex((stat) => stat.name === socketNames[player])].gamesPlayed++;
+          }
+          for(const player of winners){ // připočtení výhry do statistik
+            statsDoc.stats[statsDoc.stats.findIndex((stat) => stat.name === player.name)].wins++;
+          }
         }
 
       } else{ // nastaví dalšího hráče na řadě
@@ -183,6 +236,7 @@ io.on("connection", (socket) => {
       }
     }
 
+    await statsDoc.save();
     await foundLobby.save();
   })
 

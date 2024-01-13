@@ -1,13 +1,13 @@
-function createGameDesk(width, heigh){
+function createGameDesk(width, heigh, sada){
     
     let karty = []
     for(let i = 1; i <= width * heigh / 2; i++){
         karty.push({
             id: i,
-            url: ""
+            url: `/img/sady/${sada}/${i}.webp`
         },{
             id: i,
-            url: ""
+            url: `/img/sady/${sada}/${i}.webp`
         });
     }
     karty.sort(() => Math.random() - 0.5);
@@ -30,7 +30,7 @@ function playersCreate(lobby, socketNames){ // lobby je databáze, ze které to 
           name: socketNames[playerId],
           points: lobby.playerPoints[i]
       });
-    }
+    } 
     return players;
 }
 
@@ -38,7 +38,6 @@ function endStats(lobby, socketNames){
     players = playersCreate(lobby, socketNames);
     players.sort((a, b) => b.points - a.points); //seřadí podle bodů
     const winners = players.filter((hrac) => hrac.points === players[0].points);
-    console.log(winners, players);
     return winners
 }
 
