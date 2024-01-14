@@ -76,14 +76,16 @@ app.post("/lobby", async (req, res) => {
   console.log(code);
   const width = req.body.width;
   const heigh = req.body.height;
-  const sada = req.body.sada;
-  const gameDesk = createGameDesk(width, heigh, sada);
+  const sadaFolder = req.body.sadaFolder;
+  const sadaName = req.body.sadaName;
+  const gameDesk = createGameDesk(width, heigh, sadaFolder);
   const createdLobby = await Lobby.create({
     lobbyCode: code,
     maxPlayers: req.body.maxPlayers || 2,
     collumns: req.body.width,
     gameDesk: gameDesk /*může být jenom gamedesk*/,
     players: [req.body.socketId],
+    sada: sadaName
   });
 
   const playerNames = [socketNames[req.body.socketId]];
@@ -162,7 +164,8 @@ io.on("connection", (socket) => {
     }
     const players = playersCreate(lobby, socketNames);
     for (const playerId of lobby.players) { // na frontendu
-            io.to(playerId).emit("playerListChange", players, lobby.playerOnMove);
+      console.log(players, lobby.playerOnMove);
+      io.to(playerId).emit("playerListChange", players, lobby.playerOnMove);
     }
     console.log("user disconnected", socket.id);
     //smazání lobby, když je prázdné
@@ -225,6 +228,9 @@ io.on("connection", (socket) => {
           for(const player of winners){ // připočtení výhry do statistik
             statsDoc.stats[statsDoc.stats.findIndex((stat) => stat.name === player.name)].wins++;
           }
+          await statsDoc.save();
+          await foundLobby.deleteOne();
+          return;
         }
 
       } else{ // nastaví dalšího hráče na řadě
@@ -235,8 +241,6 @@ io.on("connection", (socket) => {
         }
       }
     }
-
-    await statsDoc.save();
     await foundLobby.save();
   })
 

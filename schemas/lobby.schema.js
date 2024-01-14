@@ -7,7 +7,8 @@ const lobbySchema = new mongoose.Schema({
   maxPlayers: Number,
   playerOnMove: String,
   playerPoints: [Number],
-  collumns: Number
+  collumns: Number,
+  sada: String
 });
 const Lobby = mongoose.model('Lobby', lobbySchema);
 module.exports = Lobby;
