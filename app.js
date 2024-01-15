@@ -147,32 +147,15 @@ io.on("connection", (socket) => {
     }
     statsDoc.save();
   });
+  
   socket.on("disconnect", async () => {
-    const lobby = await Lobby.findOne({ players: socket.id });
-    if (lobby == null) {
-      return;
-    }
-    if(socket.id === lobby.playerOnMove){
-      lobby.playerOnMove = lobby.players[(lobby.players.indexOf(lobby.playerOnMove) + 1) % lobby.players.length];
-    }
-    lobby.playerPoints = lobby.playerPoints.splice(lobby.players.indexOf(socket.id), 1);
-    lobby.players = lobby.players.filter((socketId) => socket.id != socketId);
-    await lobby.save();
-    const playerNames = [];
-    for (const playerId of lobby.players) {
-      playerNames.push(socketNames[playerId]);
-    }
-    const players = playersCreate(lobby, socketNames);
-    for (const playerId of lobby.players) { // na frontendu
-      io.to(playerId).emit("playerListChange", players, lobby.playerOnMove);
-    }
-    console.log("user disconnected", socket.id);
-    //smazání lobby, když je prázdné
-    if(lobby.players.length === 0){
-      await lobby.deleteOne();
-    }
+    await playerDisconnect(socket);
   });
 
+  socket.on("leftLobby", async () => {
+    await playerDisconnect(socket);
+  });
+  
   socket.on("turn", async (card) =>{
     const foundLobby = await Lobby.findOne({players: socket.id}).exec();
     const statsDoc = await Stats.findOne({});
@@ -245,6 +228,32 @@ io.on("connection", (socket) => {
   })
 
 });
+
+async function playerDisconnect(socket){
+  const lobby = await Lobby.findOne({ players: socket.id });
+  if (lobby == null) {
+    return;
+  }
+  if(socket.id === lobby.playerOnMove){
+    lobby.playerOnMove = lobby.players[(lobby.players.indexOf(lobby.playerOnMove) + 1) % lobby.players.length];
+  }
+  lobby.playerPoints = lobby.playerPoints.splice(lobby.players.indexOf(socket.id), 1);
+  lobby.players = lobby.players.filter((socketId) => socket.id != socketId);
+  await lobby.save();
+  const playerNames = [];
+  for (const playerId of lobby.players) {
+    playerNames.push(socketNames[playerId]);
+  }
+  const players = playersCreate(lobby, socketNames);
+  for (const playerId of lobby.players) { // na frontendu
+    io.to(playerId).emit("playerListChange", players, lobby.playerOnMove);
+  }
+  console.log("user disconnected", socket.id);
+  //smazání lobby, když je prázdné
+  if(lobby.players.length === 0){
+    await lobby.deleteOne();
+  }
+}
 
 server.listen(port, () => {
   console.log(`Example app listening on port ${port}`);
