@@ -164,7 +164,6 @@ io.on("connection", (socket) => {
     }
     const players = playersCreate(lobby, socketNames);
     for (const playerId of lobby.players) { // na frontendu
-      console.log(players, lobby.playerOnMove);
       io.to(playerId).emit("playerListChange", players, lobby.playerOnMove);
     }
     console.log("user disconnected", socket.id);
@@ -241,6 +240,7 @@ io.on("connection", (socket) => {
         }
       }
     }
+    await statsDoc.save();
     await foundLobby.save();
   })
 
